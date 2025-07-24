@@ -6,46 +6,29 @@ from typing import Dict, Any
 from orgo.project import ProjectManager
 from orgo.api.client import ApiClient
 
-def delete_computer(project_name: str) -> Dict[str, Any]:
+def delete_computer(project_id: str) -> Dict[str, Any]:
     """
     Custom function to delete a computer/project instance.
-    
+
     Args:
-        project_name (str): Name of the project to delete
-        
+        project_id (str): ID of the project to delete
+
     Returns:
         Dict[str, Any]: Response from the delete operation
-        
+
     Raises:
-        ValueError: If project not found
         Exception: If API request fails
     """
     try:
-        # Initialize the API client
         client = ApiClient()
-        
-        # Get the project status to retrieve the actual project ID
-        print(f"Looking up project: {project_name}")
-        project = client.get_status(project_name)
-        project_id = project.get("id")
-        
-        if not project_id:
-            raise ValueError(f"Could not find ID for project {project_name}")
-        
-        print(f"Found project ID: {project_id}")
-        print(f"Deleting computer/project: {project_name}")
-        
-        # Make the delete request
+        print(f"Deleting computer/project: {project_id}")
         result = client._request("POST", f"projects/{project_id}/delete")
-        
-        # Clear the local project cache after deleting
         ProjectManager.clear_project_cache()
-        
-        print(f"Successfully deleted computer: {project_name}")
+        print(f"Successfully deleted computer: {project_id}")
         return result
-        
+
     except Exception as e:
-        print(f"Error deleting computer {project_name}: {str(e)}")
+        print(f"Error deleting computer {project_id}: {str(e)}")
         raise
 
 
@@ -83,8 +66,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nProcess interrupted by user.")
         print(f"Removing .orgo folder...")
-        ProjectManager.clear_project_cache()
-        shutil.rmtree(".orgo", ignore_errors=True)
+        delete_computer("research_orchestrator")
         sys.exit(0)
     except Exception as e:
         print(f"Error: {e}")
