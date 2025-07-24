@@ -1,0 +1,8 @@
+arxiv
+requests
+pypdf
+orgo
+anthropic
+openai
+google
+dotenv
