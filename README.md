@@ -33,7 +33,7 @@ git push origin <branch_name> # always push to your branch bro
 
 --------
 
-# 🧠 Academic Insight Pipeline with Computer-Use Agents (Orgo.ai)
+# 🧠 Academic Insight Pipeline with Computer-Use Agents 
 
 ## Overview
 

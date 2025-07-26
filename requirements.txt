@@ -7,3 +7,7 @@ openai
 google
 dotenv
 manim
+gui-agents
+pyautogui
+PyMuPDF
+pydantic
