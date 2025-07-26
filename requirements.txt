@@ -6,3 +6,4 @@ anthropic
 openai
 google
 dotenv
+manim

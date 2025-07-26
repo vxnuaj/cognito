@@ -1,150 +1,69 @@
-# Technical Plan: Orgo-based Research Paper Summarization System
+# Research Paper Analysis Pipeline
 
-This document outlines the technical plan for building a research paper summarization system using Orgo AI Agents, as described in the project requirements. The system will automate the process of finding, processing, summarizing, and formatting research papers on a given topic.
+## 1. High-Level Goal
 
-## 1. Project Structure
+To create a multi-agent system that automates the process of fetching, analyzing, and synthesizing research papers. The final output will be a rigorous analysis that highlights key findings, evaluates claims, and identifies areas of uncertainty, complete with citations and suggestions for future work.
 
-```
-orgo/
-├── main.py
-├── config.py
-├── requirements.txt
-├── PLAN.md
-└── agents/
-    ├── __init__.py
-    ├── research_orchestrator.py  # Renamed from search_agent.py
-    └── document_agent.py
-└── utils/
-    ├── __init__.py
-    ├── arxiv_utils.py
-    ├── pdf_processing_utils.py
-    ├── shared_types.py
-    ├── summarizer.py             # New utility for summarization
-    ├── formatter.py              # New utility for formatting
-    └── orgo_vm_scripts/          # These scripts are now largely illustrative
-        ├── pdf_extractor.sh
-        └── screenshot_tool.sh
-```
+## 2. System Architecture
 
-## 2. Core Modules and Their Responsibilities
+The system will be coordinated by a central **Orchestrator**. The Orchestrator manages the workflow, passes data between specialized agents, and makes decisions about when to proceed, loop, or terminate the process.
 
-### `main.py`
--   **Purpose:** Entry point for the application.
--   **Responsibilities:**
-    -   Parse command-line arguments (research topic, number of papers, number of VMs).
-    -   **Enforce Constraint:** Ensure `num_papers` does not exceed `num_vms`.
-    -   Initialize and orchestrate the workflow by calling the `ResearchOrchestrator`.
-    -   Handle overall error reporting and progress display.
+The workflow follows these sequential steps:
 
-### `config.py`
--   **Purpose:** Centralized configuration for the application.
--   **Responsibilities:**
-    -   Define constants such as default number of papers, default number of VMs. **Defaults adhere to `num_papers <= num_vms` constraint.**
-    -   Store API keys (e.g., `ORGO_API_KEY`, `ANTHROPIC_API_KEY`) loaded from environment variables.
-    -   Define paths for temporary files, output directories.
+**Paper -> Extraction -> Classification -> Analysis -> Criticism -> Synthesis -> Final Report**
 
-### `requirements.txt`
--   **Purpose:** Lists all Python dependencies.
--   **Dependencies:** `arxiv`, `requests`, `pypdf`, `orgo`, `anthropic`.
+---
 
-### `agents/` Directory
+## 3. Agent Definitions
 
-#### `agents/research_orchestrator.py` (AI Orchestrator Agent)
--   **Purpose:** The singular AI agent responsible for orchestrating the entire research paper summarization workflow.
--   **Input:** `research_topic` (str), `num_papers` (int), `num_vms` (int).
--   **Output:** Path to the generated Markdown summary file.
--   **Logic:**
-    1.  Use the `arxiv` Python library (via `utils.arxiv_utils.search_arxiv`) to query arXiv for papers matching the `research_topic`.
-    2.  Filter and select the top `num_papers` based on relevance.
-    3.  **Orgo Integration:** For each selected paper, it will spawn an independent Orgo Computer-Use Agent (`DocumentAgent`) using `orgo.spawn_agent()`. It manages concurrency using `concurrent.futures.ThreadPoolExecutor` to respect the `num_vms` limit.
-    4.  Collect `ExtractedContent` from each `DocumentAgent`'s output.
-    5.  Pass the `ExtractedContent` and `PaperMetadata` to `utils.summarizer.Summarizer` to generate `Summary` objects.
-    6.  Pass all `Summary` and `PaperMetadata` objects to `utils.formatter.Formatter` to compile the final Markdown report.
-    7.  Save the Markdown report to the `OUTPUT_DIR`.
+### Agent 1: Paper Information Extraction
 
-#### `agents/document_agent.py` (Computer-Use Agent)
--   **Purpose:** Operates within an Orgo VM, controlled by its internal LLM via `orgo.Computer`, to download PDFs, extract text, and capture screenshots.
--   **Input:** `PaperMetadata` object (specifically `pdf_url`, `arxiv_id`).
--   **Output:** `ExtractedContent` object (dataclass: `raw_text` (str), `image_data` (list of base64 encoded image strings)).
--   **Logic (executed within Orgo VM, controlled by `orgo.Computer`'s internal LLM):**
-    1.  Instantiate `computer = Computer()`. This connects to the agent's dedicated VM.
-    2.  **Download PDF:** Uses `computer.prompt()` to instruct the VM's LLM to download the PDF from `pdf_url` to a temporary location within the VM (e.g., `/tmp/`).
-    3.  **Text Extraction:** Uses `computer.prompt()` to instruct the VM's LLM to open the downloaded PDF and extract its text content. The VM's LLM is prompted to return the raw text directly in its response.
-    4.  **Screenshotting:** Uses `computer.prompt()` to instruct the VM's LLM to open the PDF. Then, it uses `computer.screenshot_base64()` to capture a base64-encoded screenshot of the VM's display (assuming the PDF is open and visible).
-    5.  **Data Transfer:** Returns the `ExtractedContent` object, containing the extracted text and base64-encoded image data.
-    6.  Ensures `computer.destroy()` is called in a `finally` block to release VM resources.
+-   **Role**: Fetches the full content of a research paper given a URL, DOI, or title.
+-   **Inputs**: Paper identifier (URL, DOI, arXiv ID, etc.).
+-   **Outputs**: Raw, unstructured text content of the paper.
+-   **CUA Requirement**: **CONDITIONAL**.
+    -   **No CUA**: For sources with direct APIs (e.g., arXiv, PubMed).
+    -   **CUA Required**: For sources behind paywalls, login pages, or complex web portals that require scraping.
 
-### `utils/` Directory
+### Agent 2: Content Classifier & Extractor
 
-#### `utils/arxiv_utils.py`
--   **Purpose:** Encapsulate arXiv API interactions.
--   **Functions:**
-    -   `search_arxiv(topic: str, max_results: int) -> List[PaperMetadata]`
+-   **Role**: Processes the raw text to identify, label, and extract useful content. It filters out noise (e.g., headers, footers, irrelevant metadata) and structures the document.
+-   **Inputs**: Raw text content from the Extraction Agent.
+-   **Outputs**: A structured representation of the paper, with sections like "Abstract," "Introduction," "Methodology," "Results," and "Conclusion" clearly delineated. Key claims, figures, and tables are tagged.
+-   **CUA Requirement**: **NO**. This is a pure text processing task.
 
-#### `utils/pdf_processing_utils.py`
--   **Purpose:** (Now largely illustrative/fallback) Helper functions for PDF handling, primarily for local testing or if `orgo.Computer`'s LLM fails to perform the task.
--   **Functions:**
-    -   `download_pdf(url: str, destination_path: str)`
-    -   `extract_text_from_pdf(pdf_path: str) -> str`
+### Agent 3: Analyst Agent
 
-#### `utils/shared_types.py`
--   **Purpose:** Defines shared data structures (dataclasses) used across different modules.
--   **Classes:** `ExtractedContent` (now with `image_data` as `List[str]` for base64), `Summary`.
+-   **Role**: Performs a deep analysis of the structured content. It identifies the core metrics, evaluates the methodology, and verifies mathematical derivations.
+-   **Inputs**: Structured content from the Classifier Agent.
+-   **Outputs**: A detailed internal analysis, including extracted metrics, comparisons presented in the paper, and validated mathematical claims.
+-   **CUA Requirement**: **NO**. This agent performs internal reasoning and may use tools like a calculator or symbolic math solver, but does not need web access.
 
-#### `utils/summarizer.py`
--   **Purpose:** Provides a static utility class for generating structured summaries using an LLM.
--   **Class:** `Summarizer`
--   **Method:** `summarize_paper(extracted_content: ExtractedContent, paper_metadata: PaperMetadata) -> Summary`.
-    -   Uses the `anthropic` SDK to interact with an LLM (e.g., Claude) to generate the summary based on the extracted text.
-    -   Parses the LLM's response into the `Summary` object fields.
+### Agent 4: Critic Agent
 
-#### `utils/formatter.py`
--   **Purpose:** Provides a static utility class for compiling individual paper summaries into a single, comprehensive Markdown report.
--   **Class:** `Formatter`
--   **Method:** `format_markdown(summaries: List[Summary], papers_metadata: List[PaperMetadata]) -> str`.
+-   **Role**: Cross-examines the claims and findings from the Analyst Agent. It seeks external evidence to validate or challenge the paper's conclusions.
+-   **Inputs**: The internal analysis from the Analyst Agent.
+-   **Outputs**: A critical review containing corroborating evidence, counter-examples, or context from other sources.
+-   **CUA Requirement**: **YES**. This agent's primary function is to search the web, find competing papers, check benchmark websites (e.g., "Papers with Code"), and gather external information to provide a robust critique.
 
-#### `utils/orgo_vm_scripts/`
--   **Purpose:** (Now largely illustrative) Shell scripts that *could* be executed within an Orgo VM if direct command execution were preferred over LLM-driven interaction via `orgo.Computer`.
--   **`pdf_extractor.sh`:** Illustrates `pdftotext` usage.
--   **`screenshot_tool.sh`:** Illustrates `scrot` usage.
+### Agent 5: Synthesizer Agent
 
-## 3. Workflow
+-   **Role**: Produces the final, comprehensive report. It integrates the findings from the Analyst and the counterpoints from the Critic into a balanced and well-structured document.
+-   **Inputs**: The analyses from both the Analyst and Critic Agents.
+-   **Outputs**: A final, rigorous review that:
+    -   Summarizes the paper's contributions.
+    -   Highlights what is settled vs. what is uncertain.
+    -   Includes citations for all external sources.
+    -   Suggests potential next steps for research.
+-   **CUA Requirement**: **NO**. This is a text generation and formatting task. It may invoke local tools like LaTeX or BibTeX but does not require web browsing.
 
-1.  **Initialization (`main.py`):** User provides `research_topic`, `num_papers`, `num_vms`. Constraint `num_papers <= num_vms` is validated.
-2.  **Paper Search (`ResearchOrchestrator`):**
-    -   `ResearchOrchestrator` queries arXiv for `num_papers` related to `research_topic`.
-    -   It collects `PaperMetadata` for each relevant paper.
-3.  **Parallel Document Processing & Summarization (`ResearchOrchestrator` dispatches `DocumentAgent`s):**
-    -   `ResearchOrchestrator` uses `ThreadPoolExecutor` to manage concurrent execution of `_process_single_paper` for each `PaperMetadata`, respecting `num_vms`.
-    -   Inside `_process_single_paper`:
-        -   An `orgo.Computer` instance is created within the `DocumentAgent`'s execution context, connecting to its dedicated VM.
-        -   The `DocumentAgent` uses `computer.prompt()` to instruct the VM's internal LLM to download the PDF and extract text.
-        -   It uses `computer.screenshot_base64()` to capture screenshots.
-        -   The `ExtractedContent` is returned.
-        -   The `ResearchOrchestrator` then calls `utils.summarizer.Summarizer.summarize_paper` with the `ExtractedContent` and `PaperMetadata` to get a `Summary`.
-4.  **Result Collection (`ResearchOrchestrator`):**
-    -   `ResearchOrchestrator` collects all `Summary` objects as they become available from the concurrent processing.
-5.  **Final Formatting (`ResearchOrchestrator`):**
-    -   `ResearchOrchestrator` invokes `utils.formatter.Formatter.format_markdown`.
-    -   The `Formatter` compiles all `Summary` and `PaperMetadata` objects into a single, comprehensive Markdown report.
-6.  **Output:** The final Markdown report is saved to a file.
+---
 
-## 4. Orgo Integration Details
+## 4. Orchestrator Logic
 
--   **Computer-Use Agents:** The `DocumentAgent` is the primary use case for Orgo's Computer-Use Agents. It leverages `orgo.Computer` to interact with its VM via natural language prompts to the VM's internal LLM.
-    -   **VM Setup:** The Orgo environment for these VMs must be configured on the Orgo platform to include necessary tools (e.g., a PDF viewer, `pdftotext` if `computer.prompt` uses it, `scrot` if `computer.screenshot_base64` relies on it internally, or a headless browser for rendering).
-    -   **File Transfer/Data Extraction:** `computer.prompt()` is used to instruct the VM to download files and extract text, with the expectation that the VM's LLM will return the extracted text directly in its response. `computer.screenshot_base64()` directly retrieves image data.
--   **AI Orchestrator Agent:** `ResearchOrchestrator` acts as the top-level AI agent, using `orgo.spawn_agent()` to create and manage `DocumentAgent` instances. It orchestrates the entire workflow, including calling utility functions for summarization and formatting.
--   **Parallelization:** `ResearchOrchestrator` explicitly manages concurrency using `ThreadPoolExecutor` and `orgo.spawn_agent()` to ensure `num_vms` limits are respected.
--   **Error Handling & Monitoring:** Robust error handling is implemented for agent failures and LLM interactions. Orgo's platform-level monitoring would provide further insights.
+The **Orchestrator** is the central controller responsible for:
 
-## 5. Considerations and Potential Challenges
-
--   **Orgo VM Environment:** The exact capabilities and pre-installed tools within the Orgo VM are crucial. The `computer.prompt()`'s effectiveness depends on the VM's LLM's ability to interpret and execute commands in that environment.
--   **LLM Prompting for VM Control:** Crafting effective natural language prompts for `computer.prompt()` to reliably perform tasks like PDF download, text extraction, and screenshotting is critical and might require iteration.
--   **Parsing `computer.prompt()` Responses:** Extracting specific data (like raw text) from the `computer.prompt()`'s `messages` response requires careful parsing of the `block.type` and `block.content`.
--   **Screenshot Quality/Relevance:** Ensuring `computer.screenshot_base64()` captures relevant visual information (e.g., specific figures, not just the PDF viewer's UI) might be challenging and could require more advanced prompting or VM setup.
--   **LLM Token Limits:** When passing raw text to the `Summarizer`'s LLM, token limits must be managed (e.g., truncating text as done in `summarizer.py`).
--   **API Key Management:** Ensuring `ORGO_API_KEY` and `ANTHROPIC_API_KEY` are correctly set as environment variables.
-
-This revised plan provides a detailed roadmap for implementing the research paper summarization system, leveraging the `orgo.Computer` capabilities for VM interaction and structuring the application around a central AI orchestrator and a dedicated Computer-Use Agent.
+-   **State Management**: Keeping track of the outputs from each agent for a given task.
+-   **Control Flow**: Executing the agents in the correct sequence.
+-   **Iterative Refinement**: If the Critic Agent finds a significant flaw or new piece of information, the Orchestrator can loop back, sending the new data to the Analyst Agent for a revised analysis before proceeding to the Synthesizer.
+-   **Error Handling**: Managing failures in any of the agents.
