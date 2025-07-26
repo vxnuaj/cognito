@@ -27,7 +27,7 @@ The workflow follows these sequential steps:
 
 ### Agent 2: Content Classifier & Extractor
 
--   **Role**: Processes the raw text to identify, label, and extract useful content. It filters out noise (e.g., headers, footers, irrelevant metadata) and structures the document.
+****-   **Role**: Processes the raw text to identify, label, and extract useful content. It filters out noise (e.g., headers, footers, irrelevant metadata) and structures the document.
 -   **Inputs**: Raw text content from the Extraction Agent.
 -   **Outputs**: A structured representation of the paper, with sections like "Abstract," "Introduction," "Methodology," "Results," and "Conclusion" clearly delineated. Key claims, figures, and tables are tagged.
 -   **CUA Requirement**: **NO**. This is a pure text processing task.
